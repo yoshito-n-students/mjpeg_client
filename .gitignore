@@ -26,3 +26,6 @@
 *.exe
 *.out
 *.app
+
+# VScode settings
+.vscode/
