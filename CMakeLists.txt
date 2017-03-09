@@ -10,7 +10,6 @@ find_package(catkin REQUIRED COMPONENTS
   nodelet
   roscpp
   sensor_msgs
-  utility_headers
 )
 
 ## System dependencies are found with CMake's conventions
@@ -18,6 +17,7 @@ find_package(
   Boost REQUIRED COMPONENTS 
   regex
   system
+  thread
   )
 find_package(
   OpenCV REQUIRED COMPONENTS
@@ -113,8 +113,8 @@ find_package(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES mjpeg_client
-  CATKIN_DEPENDS cv_bridge image_transport nodelet roscpp sensor_msgs utility_headers
+  LIBRARIES mjpeg_client
+  CATKIN_DEPENDS cv_bridge image_transport nodelet roscpp sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -131,9 +131,10 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(mjpeg_client
-#   src/${PROJECT_NAME}/mjpeg_client.cpp
-# )
+add_library(
+  mjpeg_client
+  src/mjpeg_client.cpp
+  )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -141,10 +142,10 @@ include_directories(
 # add_dependencies(mjpeg_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(
-  mjpeg_client_node 
-  src/mjpeg_client_node.cpp
-  )
+# add_executable(
+#   mjpeg_client_node 
+#   src/mjpeg_client_node.cpp
+#   )
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -152,11 +153,17 @@ add_executable(
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(
-  mjpeg_client_node
+  mjpeg_client
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${OpenCV_LIBRARIES}
   )
+# target_link_libraries(
+#   mjpeg_client_node
+#   ${catkin_LIBRARIES}
+#   ${Boost_LIBRARIES}
+#   ${OpenCV_LIBRARIES}
+#   )
 
 #############
 ## Install ##
