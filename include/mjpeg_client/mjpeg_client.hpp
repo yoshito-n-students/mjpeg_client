@@ -12,8 +12,6 @@
 #include <ros/duration.h>
 #include <ros/node_handle.h>
 #include <ros/time.h>
-#include <utility_headers/bind_asio_to_ros.hpp>
-#include <utility_headers/param.hpp>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -25,6 +23,7 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
+#include <boost/thread/thread.hpp>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -38,20 +37,23 @@ private:
 public:
   MjpegClient() : resolver_(service_), socket_(service_), timer_(service_) {}
 
-  virtual ~MjpegClient() {}
+  virtual ~MjpegClient() {
+    service_.stop();
+    if (service_thread_.joinable()) {
+      service_thread_.join();
+    }
+  }
 
 private:
   virtual void onInit() {
-    namespace uhp = utility_headers::param;
-
     // get node handles
     ros::NodeHandle &nh(getNodeHandle());
     ros::NodeHandle &pnh(getPrivateNodeHandle());
 
     // load parameters
-    server_ = uhp::param< std::string >(pnh, "server", "127.0.0.1");
-    path_ = uhp::param< std::string >(pnh, "path", "/");
-    authorization_ = uhp::param< std::string >(pnh, "authorization_", "");
+    server_ = pnh.param< std::string >("server", "127.0.0.1");
+    path_ = pnh.param< std::string >("path", "/");
+    authorization_ = pnh.param< std::string >("authorization", "");
     {
       std::ostringstream oss;
       oss << "GET " << path_ << " HTTP/1.0\r\n";
@@ -63,9 +65,9 @@ private:
       oss << "\r\n";
       request_ = oss.str();
     }
-    timeout_ = ros::Duration(uhp::param< double >(pnh, "timeout", 3.)).toBoost();
-    frame_id_ = uhp::param< std::string >(pnh, "frame_id", "web_camera");
-    encoding_ = uhp::param< std::string >(pnh, "encoding", "bgr8");
+    timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
+    frame_id_ = pnh.param< std::string >("frame_id", "web_camera");
+    encoding_ = pnh.param< std::string >("encoding", "bgr8");
 
     // init image publisher
     publisher_ = image_transport::ImageTransport(nh).advertise("image", 1);
@@ -76,8 +78,8 @@ private:
     // start resolving the given url
     startResolve();
 
-    // bind boost::asio callbacks to ROS callbacks
-    utility_headers::bindAsioToRos(service_, nh.getCallbackQueue());
+    // start dispatching asio callbacks
+    service_thread_ = boost::thread(boost::bind(&boost::asio::io_service::run, &service_));
   }
 
   void startResolve() {
@@ -89,10 +91,10 @@ private:
   void onResolved(const boost::system::error_code &error,
                   Tcp::resolver::iterator endpoint_iterator) {
     if (!error) {
-      ROS_INFO_STREAM("Resolved " << server_);
+      NODELET_INFO_STREAM("Resolved " << server_);
       startConnect(endpoint_iterator);
     } else {
-      ROS_ERROR_STREAM("On resolving: " << error.message());
+      NODELET_ERROR_STREAM("On resolving: " << error.message());
       startResolve();
     }
   }
@@ -105,10 +107,10 @@ private:
 
   void onConnected(const boost::system::error_code &error) {
     if (!error) {
-      ROS_INFO_STREAM("Connected to " << socket_.remote_endpoint());
+      NODELET_INFO_STREAM("Connected to " << socket_.remote_endpoint());
       startRequest();
     } else {
-      ROS_ERROR_STREAM("On connecting: " << error.message());
+      NODELET_ERROR_STREAM("On connecting: " << error.message());
       startResolve();
     }
   }
@@ -121,10 +123,10 @@ private:
 
   void onRequested(const boost::system::error_code &error, const std::size_t bytes) {
     if (!error) {
-      ROS_INFO_STREAM("Requested http://" << server_ << path_);
+      NODELET_INFO_STREAM("Requested http://" << server_ << path_);
       startReceiveHeader();
     } else {
-      ROS_ERROR_STREAM("On requesting: " << error.message());
+      NODELET_ERROR_STREAM("On requesting: " << error.message());
       startResolve();
     }
   }
@@ -157,10 +159,10 @@ private:
             "(\"[(?&char) ]*(?&char)\"))");            // if double-quoted, white space is also ok
                                                        // except the last
         if (!boost::regex_search(header_begin, header_end, match, boundary_expr)) {
-          ROS_ERROR_STREAM("On receiving header: "
-                           "the received header does not contatin a boundary declaration\n"
-                           << "---\n"
-                           << std::string(header_begin, bytes) << "\n---");
+          NODELET_ERROR_STREAM("On receiving header: "
+                               "the received header does not contatin a boundary declaration\n"
+                               << "---\n"
+                               << std::string(header_begin, bytes) << "\n---");
           startResolve();
           return;
         }
@@ -181,7 +183,7 @@ private:
       // start receive the preamble
       startReceivePreamble(delimiter);
     } else {
-      ROS_ERROR_STREAM("On receiving header: " << error.message());
+      NODELET_ERROR_STREAM("On receiving header: " << error.message());
       startResolve();
     }
   }
@@ -201,7 +203,7 @@ private:
       response_.consume(bytes);
       startReceiveBody(delimiter, 0);
     } else {
-      ROS_ERROR_STREAM("On receiving preamble: " << error.message());
+      NODELET_ERROR_STREAM("On receiving preamble: " << error.message());
       startResolve();
     }
   }
@@ -234,7 +236,7 @@ private:
 
         if ((jpeg_begin != body_end) && (jpeg_end != body_end + 2) && (jpeg_begin < jpeg_end)) {
           const cv::_InputArray jpeg(jpeg_begin, jpeg_end - jpeg_begin);
-          image.image = cv::imdecode(jpeg, 1);
+          image.image = cv::imdecode(jpeg, -1 /* decode the data as is */);
         }
       }
 
@@ -242,8 +244,8 @@ private:
       if (!image.image.empty()) {
         publisher_.publish(image.toImageMsg());
       } else {
-        ROS_WARN_STREAM("On receiving body: message body #"
-                        << seq << " does not contain a valid jpeg image");
+        NODELET_WARN_STREAM("On receiving body: message body #"
+                            << seq << " does not contain a valid jpeg image");
       }
 
       // remove the received message body from the buffer
@@ -252,7 +254,7 @@ private:
       // start receive the next message body
       startReceiveBody(delimiter, seq + 1);
     } else {
-      ROS_ERROR_STREAM("On receiving body: " << error.message());
+      NODELET_ERROR_STREAM("On receiving body: " << error.message());
       startResolve();
     }
   }
@@ -286,6 +288,7 @@ private:
 
   // mutable objects
   boost::asio::io_service service_;
+  boost::thread service_thread_;
   Tcp::resolver resolver_;
   Tcp::socket socket_;
   boost::asio::streambuf response_;

@@ -1,9 +1,13 @@
 <launch>
-      <node pkg="mjpeg_client" type="mjpeg_client_node" name="mjpeg_client_node" output="screen">
+      <!-- the nodelet manager -->
+      <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
+      <!-- mjpeg stream to ros image topic -->
+      <node pkg="nodelet" type="nodelet" name="mjepg_client" args="load mjpeg_client/MjpegClient nodelet_manager" output="screen">
+            <remap from="image" to="mjpeg_image"/>
             <!-- someone's axis camera -->
             <param name="server" value="207.115.90.134"/>
             <param name="path" value="/axis-cgi/mjpg/video.cgi?camera=1"/>
-            <!-- someone's sony camera -->
+            <!-- another's sony camera -->
             <!--<param name="server" value="38.118.78.21"/>-->
             <!--<param name="path" value="/mjpeg"/>-->
             <!-- optional authorization (run "echo -n username:password | base64" to get your encoded string)-->
@@ -11,5 +15,8 @@
             <param name="timeout" value="5."/>
             <param name="frame_id" value="mjpeg_camera"/>
       </node>
-      <node pkg="rqt_image_view" type="rqt_image_view" name="rqt_image_view" output="screen"/>
+      <!-- viewer -->
+      <node pkg="image_view" type="image_view" name="image_view" output="screen">
+            <remap from="image" to="mjpeg_image"/>
+      </node>
 </launch>
