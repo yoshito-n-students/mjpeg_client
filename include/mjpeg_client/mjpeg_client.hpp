@@ -16,6 +16,7 @@
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/error.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read_until.hpp>
@@ -23,6 +24,7 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
+#include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
 
 #include <opencv2/core/core.hpp>
@@ -30,10 +32,11 @@
 
 namespace mjpeg_client {
 
+namespace ba = boost::asio;
+namespace bs = boost::system;
+
 class MjpegClient : public nodelet::Nodelet {
 private:
-  typedef boost::asio::ip::tcp Tcp;
-
 public:
   MjpegClient() : resolver_(service_), socket_(service_), timer_(service_) {}
 
@@ -77,13 +80,13 @@ private:
     start();
 
     // start dispatching asio callbacks
-    service_thread_ = boost::thread(boost::bind(&boost::asio::io_service::run, &service_));
+    service_thread_ = boost::thread(boost::bind(&ba::io_service::run, &service_));
   }
 
   void start() {
     // initialize the socket
     if (socket_.is_open()) {
-      boost::system::error_code error;
+      bs::error_code error;
       socket_.close(error);
       if (error) {
         // print error (can do nothing else)
@@ -103,12 +106,11 @@ private:
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onResolverTimeout, this, _1));
     // start resolving. the handler will be invoked on success, timeout, or other errors.
-    resolver_.async_resolve(Tcp::resolver::query(server_, "http"),
+    resolver_.async_resolve(ba::ip::tcp::resolver::query(server_, "http"),
                             boost::bind(&MjpegClient::onResolved, this, _1, _2));
   }
 
-  void onResolved(const boost::system::error_code &error,
-                  Tcp::resolver::iterator endpoint_iterator) {
+  void onResolved(const bs::error_code &error, ba::ip::tcp::resolver::iterator endpoint_iterator) {
     // cancel the timer
     timer_.cancel();
 
@@ -124,14 +126,13 @@ private:
     startConnect(endpoint_iterator);
   }
 
-  void startConnect(Tcp::resolver::iterator endpoint_iterator) {
+  void startConnect(ba::ip::tcp::resolver::iterator endpoint_iterator) {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    boost::asio::async_connect(socket_, endpoint_iterator,
-                               boost::bind(&MjpegClient::onConnected, this, _1));
+    ba::async_connect(socket_, endpoint_iterator, boost::bind(&MjpegClient::onConnected, this, _1));
   }
 
-  void onConnected(const boost::system::error_code &error) {
+  void onConnected(const bs::error_code &error) {
     timer_.cancel();
 
     if (error) {
@@ -147,11 +148,11 @@ private:
   void startRequest() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    boost::asio::async_write(socket_, boost::asio::buffer(request_),
-                             boost::bind(&MjpegClient::onRequested, this, _1, _2));
+    ba::async_write(socket_, ba::buffer(request_),
+                    boost::bind(&MjpegClient::onRequested, this, _1, _2));
   }
 
-  void onRequested(const boost::system::error_code &error, const std::size_t bytes) {
+  void onRequested(const bs::error_code &error, const std::size_t bytes) {
     timer_.cancel();
 
     if (error) {
@@ -168,11 +169,11 @@ private:
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
     // a header is expected to end by "\r\n\r\n"
-    boost::asio::async_read_until(socket_, response_, "\r\n\r\n",
-                                  boost::bind(&MjpegClient::onHeaderReceived, this, _1, _2));
+    ba::async_read_until(socket_, response_, "\r\n\r\n",
+                         boost::bind(&MjpegClient::onHeaderReceived, this, _1, _2));
   }
 
-  void onHeaderReceived(const boost::system::error_code &error, const std::size_t bytes) {
+  void onHeaderReceived(const bs::error_code &error, const std::size_t bytes) {
     timer_.cancel();
 
     if (error) {
@@ -187,7 +188,7 @@ private:
     std::string delimiter;
     {
       // parse the header
-      const char *const header_begin(boost::asio::buffer_cast< const char * >(response_.data()));
+      const char *const header_begin(ba::buffer_cast< const char * >(response_.data()));
       const char *const header_end(header_begin + bytes - 4); // 4 = length of "\r\n\r\n"
       boost::cmatch match;
       static boost::regex boundary_expr(
@@ -224,12 +225,11 @@ private:
   void startReceivePreamble(const std::string &delimiter) {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    boost::asio::async_read_until(
-        socket_, response_, delimiter,
-        boost::bind(&MjpegClient::onPreambleReceived, this, _1, _2, delimiter));
+    ba::async_read_until(socket_, response_, delimiter,
+                         boost::bind(&MjpegClient::onPreambleReceived, this, _1, _2, delimiter));
   }
 
-  void onPreambleReceived(const boost::system::error_code &error, const std::size_t bytes,
+  void onPreambleReceived(const bs::error_code &error, const std::size_t bytes,
                           const std::string &delimiter) {
     timer_.cancel();
 
@@ -248,12 +248,11 @@ private:
   void startReceiveBody(const std::string &delimiter, const std::size_t seq) {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    boost::asio::async_read_until(
-        socket_, response_, delimiter,
-        boost::bind(&MjpegClient::onBodyReceived, this, _1, _2, delimiter, seq));
+    ba::async_read_until(socket_, response_, delimiter,
+                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2, delimiter, seq));
   }
 
-  void onBodyReceived(const boost::system::error_code &error, const std::size_t bytes,
+  void onBodyReceived(const bs::error_code &error, const std::size_t bytes,
                       const std::string &delimiter, const std::size_t seq) {
     timer_.cancel();
 
@@ -270,7 +269,7 @@ private:
     image.header.frame_id = frame_id_;
     image.encoding = encoding_;
     {
-      const char *const body_begin(boost::asio::buffer_cast< const char * >(response_.data()));
+      const char *const body_begin(ba::buffer_cast< const char * >(response_.data()));
       const char *const body_end(body_begin + bytes - delimiter.length());
 
       static const char SOI[] = {0xff, 0xd8}; // start of image
@@ -298,9 +297,9 @@ private:
     startReceiveBody(delimiter, seq + 1);
   }
 
-  void onResolverTimeout(const boost::system::error_code &error) {
+  void onResolverTimeout(const bs::error_code &error) {
     // do nothing if the timeout operation is canceled
-    if (error == boost::asio::error::operation_aborted) {
+    if (error == ba::error::operation_aborted) {
       return;
     }
 
@@ -314,8 +313,8 @@ private:
     resolver_.cancel();
   }
 
-  void onSocketTimeout(const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
+  void onSocketTimeout(const bs::error_code &error) {
+    if (error == ba::error::operation_aborted) {
       return;
     }
 
@@ -332,8 +331,8 @@ private:
     timer_.async_wait(boost::bind(&MjpegClient::onSleepTimeout, this, _1));
   }
 
-  void onSleepTimeout(const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
+  void onSleepTimeout(const bs::error_code &error) {
+    if (error == ba::error::operation_aborted) {
       return;
     }
 
@@ -351,17 +350,17 @@ private:
   std::string path_;
   std::string authorization_;
   std::string request_;
-  boost::asio::deadline_timer::duration_type timeout_;
+  ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
   std::string encoding_;
 
   // mutable objects
-  boost::asio::io_service service_;
+  ba::io_service service_;
   boost::thread service_thread_;
-  Tcp::resolver resolver_;
-  Tcp::socket socket_;
-  boost::asio::streambuf response_;
-  boost::asio::deadline_timer timer_;
+  ba::ip::tcp::resolver resolver_;
+  ba::ip::tcp::socket socket_;
+  ba::streambuf response_;
+  ba::deadline_timer timer_;
   image_transport::Publisher publisher_;
 };
 }
