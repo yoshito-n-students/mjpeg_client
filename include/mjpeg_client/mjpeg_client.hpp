@@ -242,18 +242,18 @@ private:
     // just ignore the received preamble (this is standard)
     response_.consume(bytes);
 
-    startReceiveBody(delimiter, 0);
+    startReceiveBody(delimiter);
   }
 
-  void startReceiveBody(const std::string &delimiter, const std::size_t seq) {
+  void startReceiveBody(const std::string &delimiter) {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
     ba::async_read_until(socket_, response_, delimiter,
-                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2, delimiter, seq));
+                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2, delimiter));
   }
 
   void onBodyReceived(const bs::error_code &error, const std::size_t bytes,
-                      const std::string &delimiter, const std::size_t seq) {
+                      const std::string &delimiter) {
     timer_.cancel();
 
     if (error) {
@@ -264,7 +264,6 @@ private:
 
     // decode jpeg data in the received message body
     cv_bridge::CvImage image;
-    image.header.seq = seq;
     image.header.stamp = ros::Time::now();
     image.header.frame_id = frame_id_;
     image.encoding = encoding_;
@@ -288,13 +287,12 @@ private:
     if (!image.image.empty()) {
       publisher_.publish(image.toImageMsg());
     } else {
-      NODELET_WARN_STREAM("On receiving body: message body #"
-                          << seq << " does not contain a valid jpeg image");
+      NODELET_WARN("On receiving body: not a valid jpeg image");
     }
 
     response_.consume(bytes);
 
-    startReceiveBody(delimiter, seq + 1);
+    startReceiveBody(delimiter);
   }
 
   void onResolverTimeout(const bs::error_code &error) {
