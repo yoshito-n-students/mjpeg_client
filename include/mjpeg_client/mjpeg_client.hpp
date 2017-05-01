@@ -36,7 +36,6 @@ namespace ba = boost::asio;
 namespace bs = boost::system;
 
 class MjpegClient : public nodelet::Nodelet {
-private:
 public:
   MjpegClient() : resolver_(service_), socket_(service_), timer_(service_) {}
 
