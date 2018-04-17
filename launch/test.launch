@@ -1,8 +1,8 @@
 <launch>
-      <!-- the nodelet manager -->
-      <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" output="screen"/>
+      <!-- -->
       <!-- mjpeg stream to ros image topic -->
-      <node pkg="nodelet" type="nodelet" name="mjepg_client" args="load mjpeg_client/MjpegClient nodelet_manager" output="screen">
+      <node pkg="nodelet" type="nodelet" name="mjepg_client"
+            args="standalone mjpeg_client/MjpegClient" output="screen">
             <remap from="image" to="mjpeg_image"/>
             <!-- someone's axis camera -->
             <param name="server" value="207.115.90.134"/>
@@ -15,6 +15,7 @@
             <param name="timeout" value="5."/>
             <param name="frame_id" value="mjpeg_camera"/>
       </node>
+      <!-- -->
       <!-- viewer -->
       <node pkg="image_view" type="image_view" name="image_view" output="screen">
             <remap from="image" to="mjpeg_image"/>
