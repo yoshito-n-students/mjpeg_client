@@ -7,15 +7,15 @@ image (sensor_msgs/Image)
 
 ## Parameters
 ~server (string, defalut: "127.0.0.1")
-* IP address or domain name of the mjpeg server
+* IP address or hostname of the mjpeg server
 
 ~path (string, defalut: "/")
-* path to mjpeg streaming page
-* the URL "http://\<server>/\<path>" must be available
+* path to mjpeg streaming page beggining with "/"
+* the URL "http://\<server>\<path>" must be available
 
 ~authorization (string, defalut: "")
 * base64-encoded string for server authorization
-* "echo -n username:password | base64"
+* run "echo -n username:password | base64" in linux to generate this
 
 ~timeout (double, default: 3.0)
 * timeout in seconds for communication to the server
