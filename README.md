@@ -11,14 +11,14 @@ image (sensor_msgs/Image)
 
 ~path (string, defalut: "/")
 * path to mjpeg streaming page
-* "http://\<server>/\<path>" must be available
+* the URL "http://\<server>/\<path>" must be available
 
 ~authorization (string, defalut: "")
 * base64-encoded string for server authorization
 * "echo -n username:password | base64"
 
 ~timeout (double, default: 3.0)
-* timeout for communication to the server
+* timeout in seconds for communication to the server
 * when timeout reached, the connection is reset
 
 ~frame_id (string, default: "web_camera")
