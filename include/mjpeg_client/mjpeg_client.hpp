@@ -270,10 +270,12 @@ private:
       const char *const body_begin(ba::buffer_cast< const char * >(response_.data()));
       const char *const body_end(body_begin + bytes - delimiter.length());
 
-      static const char SOI[] = {0xff, 0xd8}; // start of image
+      static const char SOI[] = {static_cast< char >(0xff),
+                                 static_cast< char >(0xd8)}; // start of image
       const char *const jpeg_begin(std::find_first_of(body_begin, body_end, SOI, SOI + 2));
 
-      static const char EOI[] = {0xff, 0xd9}; // end of image
+      static const char EOI[] = {static_cast< char >(0xff),
+                                 static_cast< char >(0xd9)}; // end of image
       const char *const jpeg_end(std::find_end(body_begin, body_end, EOI, EOI + 2) + 2);
 
       if ((jpeg_begin != body_end) && (jpeg_end != body_end + 2) && (jpeg_begin < jpeg_end)) {
@@ -360,6 +362,6 @@ private:
   ba::deadline_timer timer_;
   image_transport::Publisher publisher_;
 };
-}
+} // namespace mjpeg_client
 
 #endif // MJPEG_CLIENT_MJPEG_CLIENT_HPP
