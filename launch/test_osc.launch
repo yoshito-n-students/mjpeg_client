@@ -1,0 +1,16 @@
+<launch>
+      <!-- -->
+      <!-- mjpeg stream to ros image topic -->
+      <node pkg="nodelet" type="nodelet" name="mjepg_client"
+            args="standalone mjpeg_client/MjpegClientOSC" output="screen">
+            <remap from="image" to="mjpeg_image"/>
+            <param name="server" value="192.168.1.1"/>
+            <param name="timeout" value="5."/>
+            <param name="frame_id" value="theta"/>
+      </node>
+      <!-- -->
+      <!-- viewer -->
+      <node pkg="image_view" type="image_view" name="image_view" output="screen">
+            <remap from="image" to="mjpeg_image"/>
+      </node>
+</launch>
