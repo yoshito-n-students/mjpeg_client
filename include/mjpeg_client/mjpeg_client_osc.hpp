@@ -151,12 +151,9 @@ private:
       return;
     }
 
-    NODELET_INFO_STREAM(std::string(ba::buffer_cast<const char *>(response_.data()), bytes));
-
     // remove the received header from the buffer
     response_.consume(bytes);
 
-    NODELET_INFO("Received header");
     startReceiveBody();
   }
 
