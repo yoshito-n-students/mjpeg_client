@@ -5,13 +5,12 @@
 #include <sstream>
 #include <string>
 
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <image_transport/publisher.h>
 #include <nodelet/nodelet.h>
 #include <ros/duration.h>
 #include <ros/node_handle.h>
+#include <ros/publisher.h>
 #include <ros/time.h>
+#include <sensor_msgs/CompressedImage.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/deadline_timer.hpp>
@@ -24,9 +23,6 @@
 #include <boost/bind.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
-
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
 
 namespace mjpeg_client {
 
@@ -67,7 +63,7 @@ private:
     encoding_ = pnh.param<std::string>("encoding", "bgr8");
 
     // init image publisher
-    publisher_ = image_transport::ImageTransport(nh).advertise("image", 1);
+    publisher_ = nh.advertise<sensor_msgs::CompressedImage>("image/compressed", 1, true);
 
     // start the operation
     start();
@@ -173,11 +169,11 @@ private:
       return;
     }
 
-    // decode jpeg data in the received message body
-    cv_bridge::CvImage image;
-    image.header.stamp = ros::Time::now();
-    image.header.frame_id = frame_id_;
-    image.encoding = encoding_;
+    // pack a jpeg image message
+    const sensor_msgs::CompressedImagePtr msg(new sensor_msgs::CompressedImage());
+    msg->header.stamp = ros::Time::now();
+    msg->header.frame_id = frame_id_;
+    msg->format = "jpeg";
     {
       const char *const body_begin = ba::buffer_cast<const char *>(response_.data());
       const char *const body_end = body_begin + bytes;
@@ -189,14 +185,13 @@ private:
       const char *const jpeg_end = std::find_end(body_begin, body_end, EOI, EOI + 2) + 2;
 
       if ((jpeg_begin != body_end) && (jpeg_end != body_end + 2) && (jpeg_begin < jpeg_end)) {
-        const cv::_InputArray jpeg(jpeg_begin, jpeg_end - jpeg_begin);
-        image.image = cv::imdecode(jpeg, -1 /* decode the data as is */);
+        msg->data.assign(jpeg_begin, jpeg_end);
       }
     }
 
-    // publish the decoded image
-    if (!image.image.empty()) {
-      publisher_.publish(image.toImageMsg());
+    // publish the jpeg image
+    if (!msg->data.empty()) {
+      publisher_.publish(msg);
     } else {
       NODELET_WARN("On receiving body: not a valid jpeg image");
     }
@@ -252,7 +247,7 @@ private:
   ba::ip::tcp::socket socket_;
   ba::streambuf response_;
   ba::deadline_timer timer_;
-  image_transport::Publisher publisher_;
+  ros::Publisher publisher_;
 };
 } // namespace mjpeg_client
 
