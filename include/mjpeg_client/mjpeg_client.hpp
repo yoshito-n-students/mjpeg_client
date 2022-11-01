@@ -5,13 +5,12 @@
 #include <sstream>
 #include <string>
 
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <image_transport/publisher.h>
 #include <nodelet/nodelet.h>
 #include <ros/duration.h>
 #include <ros/node_handle.h>
+#include <ros/publisher.h>
 #include <ros/time.h>
+#include <sensor_msgs/CompressedImage.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -26,9 +25,6 @@
 #include <boost/regex.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
-
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
 
 namespace mjpeg_client {
 
@@ -50,13 +46,13 @@ public:
 private:
   virtual void onInit() {
     // get node handles
-    ros::NodeHandle &nh(getNodeHandle());
-    ros::NodeHandle &pnh(getPrivateNodeHandle());
+    ros::NodeHandle &nh = getNodeHandle();
+    ros::NodeHandle &pnh = getPrivateNodeHandle();
 
     // load parameters
-    server_ = pnh.param< std::string >("server", "127.0.0.1");
-    path_ = pnh.param< std::string >("path", "/");
-    authorization_ = pnh.param< std::string >("authorization", "");
+    server_ = pnh.param<std::string>("server", "127.0.0.1");
+    path_ = pnh.param<std::string>("path", "/");
+    authorization_ = pnh.param<std::string>("authorization", "");
     {
       std::ostringstream oss;
       oss << "GET " << path_ << " HTTP/1.0\r\n";
@@ -69,11 +65,10 @@ private:
       request_ = oss.str();
     }
     timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
-    frame_id_ = pnh.param< std::string >("frame_id", "web_camera");
-    encoding_ = pnh.param< std::string >("encoding", "bgr8");
+    frame_id_ = pnh.param<std::string>("frame_id", "web_camera");
 
     // init image publisher
-    publisher_ = image_transport::ImageTransport(nh).advertise("image", 1);
+    publisher_ = nh.advertise<sensor_msgs::CompressedImage>("image/compressed", 1, true);
 
     // start the operation
     start();
@@ -181,78 +176,20 @@ private:
       return;
     }
 
-    // parse the received header to pick a delimiter string.
-    // the delimiter string must be copied from the buffer
-    // because the buffer is cleared just after this.
-    std::string delimiter;
-    {
-      // parse the header
-      const char *const header_begin(ba::buffer_cast< const char * >(response_.data()));
-      const char *const header_end(header_begin + bytes - 4); // 4 = length of "\r\n\r\n"
-      boost::cmatch match;
-      static boost::regex boundary_expr(
-          "boundary="                                // boundary declaration begins "boundary="
-          "(((?<char>[\\w'\\(\\)\\+,-\\./:=\\?])+)|" // can contain alphanumeric chars
-                                                     // and some symbols
-          "(\"[(?&char) ]*(?&char)\"))");            // if double-quoted, white space is also ok
-                                                     // except the last
-      if (!boost::regex_search(header_begin, header_end, match, boundary_expr)) {
-        NODELET_ERROR_STREAM("On receiving header: "
-                             "the received header does not contatin a boundary declaration\n"
-                             << "---\n"
-                             << std::string(header_begin, bytes) << "\n---");
-        restart();
-        return;
-      }
-      delimiter = match[1].str();
-
-      // although delimiter is standardized <CRLF "--" boundary>,
-      // some of commercial servers returns a boundary that already contains "--".
-      // so we should optionally add "--".
-      while (delimiter.substr(0, 2) != "--") {
-        delimiter.insert(0, "-");
-      }
-      delimiter.insert(0, "\r\n");
-    }
-
     // remove the received header from the buffer
     response_.consume(bytes);
 
-    startReceivePreamble(delimiter);
+    startReceiveBody();
   }
 
-  void startReceivePreamble(const std::string &delimiter) {
+  void startReceiveBody() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    ba::async_read_until(socket_, response_, delimiter,
-                         boost::bind(&MjpegClient::onPreambleReceived, this, _1, _2, delimiter));
+    ba::async_read_until(socket_, response_, "\xff\xd9",
+                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2));
   }
 
-  void onPreambleReceived(const bs::error_code &error, const std::size_t bytes,
-                          const std::string &delimiter) {
-    timer_.cancel();
-
-    if (error) {
-      NODELET_ERROR_STREAM("On receiving preamble: " << error.message());
-      restart();
-      return;
-    }
-
-    // just ignore the received preamble (this is standard)
-    response_.consume(bytes);
-
-    startReceiveBody(delimiter);
-  }
-
-  void startReceiveBody(const std::string &delimiter) {
-    timer_.expires_from_now(timeout_);
-    timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    ba::async_read_until(socket_, response_, delimiter,
-                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2, delimiter));
-  }
-
-  void onBodyReceived(const bs::error_code &error, const std::size_t bytes,
-                      const std::string &delimiter) {
+  void onBodyReceived(const bs::error_code &error, const std::size_t bytes) {
     timer_.cancel();
 
     if (error) {
@@ -262,38 +199,35 @@ private:
     }
 
     // decode jpeg data in the received message body
-    cv_bridge::CvImage image;
-    image.header.stamp = ros::Time::now();
-    image.header.frame_id = frame_id_;
-    image.encoding = encoding_;
+    sensor_msgs::CompressedImagePtr msg(new sensor_msgs::CompressedImage());
+    msg->header.stamp = ros::Time::now();
+    msg->header.frame_id = frame_id_;
+    msg->format = "jpeg";
     {
-      const char *const body_begin(ba::buffer_cast< const char * >(response_.data()));
-      const char *const body_end(body_begin + bytes - delimiter.length());
+      const char *const body_begin = ba::buffer_cast<const char *>(response_.data());
+      const char *const body_end = body_begin + bytes;
 
-      static const char SOI[] = {static_cast< char >(0xff),
-                                 static_cast< char >(0xd8)}; // start of image
-      const char *const jpeg_begin(std::find_first_of(body_begin, body_end, SOI, SOI + 2));
+      static const char SOI[] = "\xff\xd8"; // start of image
+      const char *const jpeg_begin = std::find_first_of(body_begin, body_end, SOI, SOI + 2);
 
-      static const char EOI[] = {static_cast< char >(0xff),
-                                 static_cast< char >(0xd9)}; // end of image
-      const char *const jpeg_end(std::find_end(body_begin, body_end, EOI, EOI + 2) + 2);
+      static const char EOI[] = "\xff\xd9"; // end of image
+      const char *const jpeg_end = std::find_end(body_begin, body_end, EOI, EOI + 2) + 2;
 
       if ((jpeg_begin != body_end) && (jpeg_end != body_end + 2) && (jpeg_begin < jpeg_end)) {
-        const cv::_InputArray jpeg(jpeg_begin, jpeg_end - jpeg_begin);
-        image.image = cv::imdecode(jpeg, -1 /* decode the data as is */);
+        msg->data.assign(jpeg_begin, jpeg_end);
       }
     }
 
     // publish the decoded image
-    if (!image.image.empty()) {
-      publisher_.publish(image.toImageMsg());
+    if (!msg->data.empty()) {
+      publisher_.publish(msg);
     } else {
       NODELET_WARN("On receiving body: not a valid jpeg image");
     }
 
     response_.consume(bytes);
 
-    startReceiveBody(delimiter);
+    startReceiveBody();
   }
 
   void onResolverTimeout(const bs::error_code &error) {
@@ -351,7 +285,6 @@ private:
   std::string request_;
   ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
-  std::string encoding_;
 
   // mutable objects
   ba::io_service service_;
@@ -360,7 +293,7 @@ private:
   ba::ip::tcp::socket socket_;
   ba::streambuf response_;
   ba::deadline_timer timer_;
-  image_transport::Publisher publisher_;
+  ros::Publisher publisher_;
 };
 } // namespace mjpeg_client
 

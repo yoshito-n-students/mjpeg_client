@@ -3,7 +3,7 @@
       <!-- mjpeg stream to ros image topic -->
       <node pkg="nodelet" type="nodelet" name="mjepg_client"
             args="standalone mjpeg_client/MjpegClient" output="screen">
-            <remap from="image" to="mjpeg_image"/>
+            <remap from="image/compressed" to="mjpeg_image/compressed"/>
             <!-- someone's axis camera -->
             <param name="server" value="207.115.90.134"/>
             <param name="path" value="/axis-cgi/mjpg/video.cgi?camera=1"/>
@@ -17,7 +17,7 @@
       </node>
       <!-- -->
       <!-- viewer -->
-      <node pkg="image_view" type="image_view" name="image_view" output="screen">
-            <remap from="image" to="mjpeg_image"/>
+      <node pkg="rqt_image_view" type="rqt_image_view" name="image_view" output="screen"
+            args="/mjpeg_image/compressed">
       </node>
 </launch>
