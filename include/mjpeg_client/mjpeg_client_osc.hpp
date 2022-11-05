@@ -60,7 +60,6 @@ private:
     }
     timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
     frame_id_ = pnh.param<std::string>("frame_id", "osc_camera");
-    encoding_ = pnh.param<std::string>("encoding", "bgr8");
 
     // init image publisher
     publisher_ = nh.advertise<sensor_msgs::CompressedImage>("image/compressed", 1, true);
@@ -239,7 +238,6 @@ private:
   std::string request_;
   ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
-  std::string encoding_;
 
   // mutable objects
   ba::io_service service_;
