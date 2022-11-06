@@ -16,10 +16,10 @@
 #include <boost/asio/connect.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/streambuf.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
 #include <boost/system/error_code.hpp>
@@ -32,15 +32,10 @@ namespace bs = boost::system;
 
 class MjpegClient : public nodelet::Nodelet {
 public:
-  MjpegClient() : resolver_(io_context_), socket_(io_context_), timer_(io_context_) {}
+  MjpegClient()
+      : io_threads_(1), resolver_(io_threads_), socket_(io_threads_), timer_(io_threads_) {}
 
-  virtual ~MjpegClient() {
-    // stop dispatching asio callbacks
-    io_context_.stop();
-    if (io_thread_.joinable()) {
-      io_thread_.join();
-    }
-  }
+  virtual ~MjpegClient() {}
 
 private:
   virtual void onInit() {
@@ -57,7 +52,7 @@ private:
                                                       {{"Accept", "multipart/x-mixed-replace"}});
     const std::string body = pnh.param<std::string>("body", "");
     timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
-    frame_id_ = pnh.param<std::string>("frame_id", "osc_camera");
+    frame_id_ = pnh.param<std::string>("frame_id", "camera");
 
     // compile http request
     {
@@ -77,9 +72,6 @@ private:
 
     // start the operation
     start();
-
-    // start dispatching asio callbacks
-    io_thread_ = boost::thread(boost::bind(&ba::io_context::run, &io_context_));
   }
 
   void start() {
@@ -273,8 +265,7 @@ private:
   std::string frame_id_;
 
   // mutable objects
-  ba::io_context io_context_;
-  boost::thread io_thread_;
+  ba::thread_pool io_threads_;
   ba::ip::tcp::resolver resolver_;
   ba::ip::tcp::socket socket_;
   ba::streambuf response_;
