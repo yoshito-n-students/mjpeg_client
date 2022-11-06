@@ -54,7 +54,7 @@ private:
     timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
     frame_id_ = pnh.param<std::string>("frame_id", "camera");
 
-    // compile http request
+    // compose http request
     {
       std::ostringstream oss;
       oss << "POST " << path << " HTTP/1.1\r\n";
@@ -158,7 +158,7 @@ private:
   void startReceiveBoundary() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    ba::async_read_until(socket_, response_, "\xff\xd8",
+    ba::async_read_until(socket_, response_, /* SOI (Start Of Image) marker */ "\xff\xd8",
                          boost::bind(&MjpegClient::onBoundaryReceived, this, _1, _2));
   }
 
@@ -181,7 +181,7 @@ private:
   void startReceiveJpeg() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    ba::async_read_until(socket_, response_, "\xff\xd9",
+    ba::async_read_until(socket_, response_, /* EOI (End Of Image) marker */ "\xff\xd9",
                          boost::bind(&MjpegClient::onJpegReceived, this, _1, _2));
   }
 
