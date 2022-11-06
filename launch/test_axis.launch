@@ -6,14 +6,11 @@
       <node pkg="nodelet" type="nodelet" name="mjepg_client_loader"
             args="load mjpeg_client/MjpegClient mjpeg_client" output="screen">
             <rosparam>
-                server: 192.168.1.1
-                service: 80
-                path: /osc/commands/execute
-                headers: 
-                    Content-Type: application/json
-                body: "{\"name\":\"camera.getLivePreview\"}"
+                server: 207.115.90.134
+                service: http
+                path: /axis-cgi/mjpg/video.cgi?camera=1
                 timeout: 5.
-                frame_id: osc_camera
+                frame_id: axis_camera
             </rosparam>
       </node>
       <!-- compressed image to uncompressed image -->
