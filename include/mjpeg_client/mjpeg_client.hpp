@@ -1,7 +1,7 @@
 #ifndef MJPEG_CLIENT_MJPEG_CLIENT_HPP
 #define MJPEG_CLIENT_MJPEG_CLIENT_HPP
 
-#include <algorithm>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -16,13 +16,12 @@
 #include <boost/asio/connect.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/asio/io_service.hpp>
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/streambuf.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
-#include <boost/regex.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
 
@@ -33,13 +32,13 @@ namespace bs = boost::system;
 
 class MjpegClient : public nodelet::Nodelet {
 public:
-  MjpegClient() : resolver_(service_), socket_(service_), timer_(service_) {}
+  MjpegClient() : resolver_(io_context_), socket_(io_context_), timer_(io_context_) {}
 
   virtual ~MjpegClient() {
     // stop dispatching asio callbacks
-    service_.stop();
-    if (service_thread_.joinable()) {
-      service_thread_.join();
+    io_context_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
     }
   }
 
@@ -50,22 +49,28 @@ private:
     ros::NodeHandle &pnh = getPrivateNodeHandle();
 
     // load parameters
-    server_ = pnh.param<std::string>("server", "127.0.0.1");
-    path_ = pnh.param<std::string>("path", "/");
-    authorization_ = pnh.param<std::string>("authorization", "");
+    server_ = pnh.param<std::string>("server", "localhost");
+    service_ = pnh.param<std::string>("service", "80");
+    const std::string path = pnh.param<std::string>("path", "/");
+    const std::map<std::string, std::string> headers =
+        pnh.param<std::map<std::string, std::string>>("headers",
+                                                      {{"Accept", "multipart/x-mixed-replace"}});
+    const std::string body = pnh.param<std::string>("body", "");
+    timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
+    frame_id_ = pnh.param<std::string>("frame_id", "osc_camera");
+
+    // compile http request
     {
       std::ostringstream oss;
-      oss << "GET " << path_ << " HTTP/1.0\r\n";
+      oss << "POST " << path << " HTTP/1.1\r\n";
       oss << "Host: " << server_ << "\r\n";
-      if (!authorization_.empty()) {
-        oss << "Authorization: " << authorization_ << "\r\n";
+      for (const auto h : headers) {
+        oss << h.first << ": " << h.second << "\r\n";
       }
-      oss << "Accept: multipart/x-mixed-replace\r\n";
       oss << "\r\n";
+      oss << body;
       request_ = oss.str();
     }
-    timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
-    frame_id_ = pnh.param<std::string>("frame_id", "web_camera");
 
     // init image publisher
     publisher_ = nh.advertise<sensor_msgs::CompressedImage>("image/compressed", 1, true);
@@ -74,7 +79,7 @@ private:
     start();
 
     // start dispatching asio callbacks
-    service_thread_ = boost::thread(boost::bind(&ba::io_service::run, &service_));
+    io_thread_ = boost::thread(boost::bind(&ba::io_context::run, &io_context_));
   }
 
   void start() {
@@ -100,11 +105,10 @@ private:
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onResolverTimeout, this, _1));
     // start resolving. the handler will be invoked on success, timeout, or other errors.
-    resolver_.async_resolve(ba::ip::tcp::resolver::query(server_, "http"),
-                            boost::bind(&MjpegClient::onResolved, this, _1, _2));
+    resolver_.async_resolve(server_, service_, boost::bind(&MjpegClient::onResolved, this, _1, _2));
   }
 
-  void onResolved(const bs::error_code &error, ba::ip::tcp::resolver::iterator endpoint_iterator) {
+  void onResolved(const bs::error_code &error, ba::ip::tcp::resolver::results_type endpoints) {
     // cancel the timer
     timer_.cancel();
 
@@ -116,17 +120,17 @@ private:
     }
 
     // start the next procedure on success
-    NODELET_INFO_STREAM("Resolved " << server_);
-    startConnect(endpoint_iterator);
+    NODELET_INFO_STREAM("Resolved {" << server_ << ", " << service_ << "}");
+    startConnect(endpoints);
   }
 
-  void startConnect(ba::ip::tcp::resolver::iterator endpoint_iterator) {
+  void startConnect(ba::ip::tcp::resolver::results_type endpoints) {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    ba::async_connect(socket_, endpoint_iterator, boost::bind(&MjpegClient::onConnected, this, _1));
+    ba::async_connect(socket_, endpoints, boost::bind(&MjpegClient::onConnected, this, _1, _2));
   }
 
-  void onConnected(const bs::error_code &error) {
+  void onConnected(const bs::error_code &error, const ba::ip::tcp::endpoint &endpoint) {
     timer_.cancel();
 
     if (error) {
@@ -135,7 +139,7 @@ private:
       return;
     }
 
-    NODELET_INFO_STREAM("Connected to " << socket_.remote_endpoint());
+    NODELET_INFO_STREAM("Connected to " << endpoint);
     startRequest();
   }
 
@@ -155,79 +159,64 @@ private:
       return;
     }
 
-    NODELET_INFO_STREAM("Requested http://" << server_ << path_);
-    startReceiveHeader();
+    NODELET_INFO_STREAM("Requested \"" << request_ << "\"");
+    startReceiveBoundary();
   }
 
-  void startReceiveHeader() {
+  void startReceiveBoundary() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
-    // a header is expected to end by "\r\n\r\n"
-    ba::async_read_until(socket_, response_, "\r\n\r\n",
-                         boost::bind(&MjpegClient::onHeaderReceived, this, _1, _2));
+    ba::async_read_until(socket_, response_, "\xff\xd8",
+                         boost::bind(&MjpegClient::onBoundaryReceived, this, _1, _2));
   }
 
-  void onHeaderReceived(const bs::error_code &error, const std::size_t bytes) {
+  void onBoundaryReceived(const bs::error_code &error, const std::size_t bytes) {
     timer_.cancel();
 
     if (error) {
-      NODELET_ERROR_STREAM("On receiving header: " << error.message());
+      NODELET_ERROR_STREAM("On receiving boundary: " << error.message());
       restart();
       return;
     }
 
-    // remove the received header from the buffer
-    response_.consume(bytes);
+    // remove the received boundary from the buffer
+    // (keep last 2 bytes which are SOI of jpeg image)
+    response_.consume(bytes - 2);
 
-    startReceiveBody();
+    startReceiveJpeg();
   }
 
-  void startReceiveBody() {
+  void startReceiveJpeg() {
     timer_.expires_from_now(timeout_);
     timer_.async_wait(boost::bind(&MjpegClient::onSocketTimeout, this, _1));
     ba::async_read_until(socket_, response_, "\xff\xd9",
-                         boost::bind(&MjpegClient::onBodyReceived, this, _1, _2));
+                         boost::bind(&MjpegClient::onJpegReceived, this, _1, _2));
   }
 
-  void onBodyReceived(const bs::error_code &error, const std::size_t bytes) {
+  void onJpegReceived(const bs::error_code &error, const std::size_t bytes) {
     timer_.cancel();
 
     if (error) {
-      NODELET_ERROR_STREAM("On receiving body: " << error.message());
+      NODELET_ERROR_STREAM("On receiving jpeg: " << error.message());
       restart();
       return;
     }
 
-    // decode jpeg data in the received message body
-    sensor_msgs::CompressedImagePtr msg(new sensor_msgs::CompressedImage());
+    // pack a jpeg image message
+    const sensor_msgs::CompressedImagePtr msg(new sensor_msgs::CompressedImage());
     msg->header.stamp = ros::Time::now();
     msg->header.frame_id = frame_id_;
     msg->format = "jpeg";
-    {
-      const char *const body_begin = ba::buffer_cast<const char *>(response_.data());
-      const char *const body_end = body_begin + bytes;
+    const char *const jpeg_begin = static_cast<const char *>(response_.data().data());
+    const std::size_t jpeg_size = 2 + bytes;
+    msg->data.assign(jpeg_begin, jpeg_begin + jpeg_size);
 
-      static const char SOI[] = "\xff\xd8"; // start of image
-      const char *const jpeg_begin = std::find_first_of(body_begin, body_end, SOI, SOI + 2);
+    // publish the jpeg image
+    publisher_.publish(msg);
 
-      static const char EOI[] = "\xff\xd9"; // end of image
-      const char *const jpeg_end = std::find_end(body_begin, body_end, EOI, EOI + 2) + 2;
+    response_.consume(jpeg_size);
 
-      if ((jpeg_begin != body_end) && (jpeg_end != body_end + 2) && (jpeg_begin < jpeg_end)) {
-        msg->data.assign(jpeg_begin, jpeg_end);
-      }
-    }
-
-    // publish the decoded image
-    if (!msg->data.empty()) {
-      publisher_.publish(msg);
-    } else {
-      NODELET_WARN("On receiving body: not a valid jpeg image");
-    }
-
-    response_.consume(bytes);
-
-    startReceiveBody();
+    startReceiveBoundary();
   }
 
   void onResolverTimeout(const bs::error_code &error) {
@@ -279,16 +268,13 @@ private:
 
 private:
   // parameters
-  std::string server_;
-  std::string path_;
-  std::string authorization_;
-  std::string request_;
+  std::string server_, service_, request_;
   ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
 
   // mutable objects
-  ba::io_service service_;
-  boost::thread service_thread_;
+  ba::io_context io_context_;
+  boost::thread io_thread_;
   ba::ip::tcp::resolver resolver_;
   ba::ip::tcp::socket socket_;
   ba::streambuf response_;
