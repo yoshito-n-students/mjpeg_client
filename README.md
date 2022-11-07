@@ -1,31 +1,43 @@
 # mjpeg_client
-A ROS nodelet to receive a mjpeg stream and convert it to an image topic
+ROS nodelets to receive a motion jpeg stream over HTTP and convert it to an image topic
 
-## Published Topics
-image (sensor_msgs/Image)
-* subtopics supported by image_transport are also published
+## Nodelet: MjpegClient
+receives mjpeg stream over HTTP and convert it to sensor_msgs/CompressedImage
 
-## Parameters
-~server (string, defalut: "127.0.0.1")
-* IP address or hostname of the mjpeg server
+### Published Topics
+___image/compressed___ (sensor_msgs/CompressedImage)
 
-~path (string, defalut: "/")
-* path to mjpeg streaming page beggining with "/"
-* the URL "http://\<server>\<path>" must be available
+### Parameters
+___~server___ (string, defalut: "localhost")
+* a descriptive name or a numeric address string of the mjpeg server
 
-~authorization (string, defalut: "")
-* base64-encoded string for server authorization
-* run "echo -n username:password | base64" in linux to generate this
+___~service___ (string, default: "80")
+* a descriptive name (usually "http") or a numeric string corresponding to a port number of the mjpeg server
 
-~timeout (double, default: 3.0)
+___~target___ (string, defalut: "/")
+* a string corresponding to HTTP request target
+
+___~headers___ (map<string, string>, default: {{"Accept", "multipart/x-mixed-replace"}})
+* a sequence of string pairs corresponding to the field and value of HTTP request header
+
+___~body___ (string, default: "")
+* a string corresponding to HTTP request body
+
+___~timeout___ (double, default: 3.0)
 * timeout in seconds for communication to the server
 * when timeout reached, the connection is reset
 
-~frame_id (string, default: "web_camera")
+___~frame_id___ (string, default: "camera")
 * frame id of published images
 
-~encoding (string, default: "bgr8")
-* encoding of published images
+## Nodelet: MjpegDecoder
+uncompresses sensor_msgs/CompressedImage to sensor_msgs/Image
+
+### Subscribed Topics
+___image/compressed___ (sensor_msgs/CompressedImage)
+
+### Published Topics
+___image___ (sensor_msgs/Image)
 
 ## Examples
-see [launch/test.launch](launch/test.launch)
+see **[launch/test_axis.launch](launch/test_axis.launch)** for general IP cameras such as AXIS, and **[launch/test_osc.launch](launch/test_osc.launch)** for cameras which support Open Spherical Camera API such as RICOH THETA
