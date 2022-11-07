@@ -3,12 +3,12 @@
       <!-- mjpeg stream to ros image topic -->
       <node name="mjpeg_client" pkg="nodelet" type="nodelet" args="manager" output="screen" />
       <!-- mjpeg stream to compressed image -->
-      <node pkg="nodelet" type="nodelet" name="mjepg_client_loader"
+      <node name="mjepg_client_loader" pkg="nodelet" type="nodelet" 
             args="load mjpeg_client/MjpegClient mjpeg_client" output="screen">
             <rosparam>
                 server: 207.115.90.134
                 service: http
-                path: /axis-cgi/mjpg/video.cgi?camera=1
+                target: /axis-cgi/mjpg/video.cgi?camera=1
                 timeout: 5.
                 frame_id: axis_camera
             </rosparam>

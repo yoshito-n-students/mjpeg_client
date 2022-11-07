@@ -46,7 +46,7 @@ private:
     // load parameters
     server_ = pnh.param<std::string>("server", "localhost");
     service_ = pnh.param<std::string>("service", "80");
-    const std::string path = pnh.param<std::string>("path", "/");
+    const std::string target = pnh.param<std::string>("target", "/");
     const std::map<std::string, std::string> headers =
         pnh.param<std::map<std::string, std::string>>("headers",
                                                       {{"Accept", "multipart/x-mixed-replace"}});
@@ -57,7 +57,7 @@ private:
     // compose http request
     {
       std::ostringstream oss;
-      oss << "POST " << path << " HTTP/1.1\r\n";
+      oss << "POST " << target << " HTTP/1.1\r\n";
       oss << "Host: " << server_ << "\r\n";
       for (const auto h : headers) {
         oss << h.first << ": " << h.second << "\r\n";
