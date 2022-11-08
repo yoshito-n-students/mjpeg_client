@@ -14,7 +14,7 @@ ___~server___ (string, default: "localhost")
 ___~service___ (string, default: "http")
 * a descriptive name (usually "http") or a numeric string corresponding to a port number of the mjpeg server
 
-___~target___ (string, defalut: "/")
+___~target___ (string, default: "/")
 * a string corresponding to HTTP request target
 
 ___~headers___ (map<string, string>, default: {{"Accept", "multipart/x-mixed-replace"}})
