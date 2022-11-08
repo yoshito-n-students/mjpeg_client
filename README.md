@@ -8,7 +8,7 @@ receives mjpeg stream over HTTP and convert it to sensor_msgs/CompressedImage
 ___image/compressed___ (sensor_msgs/CompressedImage)
 
 ### Parameters
-___~server___ (string, defalut: "localhost")
+___~server___ (string, default: "localhost")
 * a descriptive name or a numeric address string of the mjpeg server
 
 ___~service___ (string, default: "80")
@@ -31,7 +31,7 @@ ___~frame_id___ (string, default: "camera")
 * frame id of published images
 
 ## Nodelet: MjpegDecoder
-uncompresses sensor_msgs/CompressedImage to sensor_msgs/Image
+decompresses sensor_msgs/CompressedImage to sensor_msgs/Image
 
 ### Subscribed Topics
 ___image/compressed___ (sensor_msgs/CompressedImage)
