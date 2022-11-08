@@ -7,7 +7,6 @@
             args="load mjpeg_client/MjpegClient mjpeg_client" output="screen">
             <rosparam>
                 server: 207.115.90.134
-                service: http
                 target: /axis-cgi/mjpg/video.cgi?camera=1
                 timeout: 5.
                 frame_id: axis_camera

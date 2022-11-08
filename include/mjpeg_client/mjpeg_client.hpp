@@ -45,7 +45,7 @@ private:
 
     // load parameters
     server_ = pnh.param<std::string>("server", "localhost");
-    service_ = pnh.param<std::string>("service", "80");
+    service_ = pnh.param<std::string>("service", "http");
     const std::string target = pnh.param<std::string>("target", "/");
     const std::map<std::string, std::string> headers =
         pnh.param<std::map<std::string, std::string>>("headers",

@@ -11,7 +11,7 @@ ___image/compressed___ (sensor_msgs/CompressedImage)
 ___~server___ (string, default: "localhost")
 * a descriptive name or a numeric address string of the mjpeg server
 
-___~service___ (string, default: "80")
+___~service___ (string, default: "http")
 * a descriptive name (usually "http") or a numeric string corresponding to a port number of the mjpeg server
 
 ___~target___ (string, defalut: "/")
