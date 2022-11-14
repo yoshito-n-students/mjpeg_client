@@ -6,7 +6,6 @@ project(mjpeg_client)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
-  image_transport
   nodelet
   roscpp
   sensor_msgs
@@ -15,7 +14,6 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 find_package(
   Boost REQUIRED COMPONENTS 
-  regex
   system
   thread
   )
@@ -24,7 +22,6 @@ find_package(
   core
   highgui
 )
-
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -114,7 +111,7 @@ find_package(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES mjpeg_client
-  CATKIN_DEPENDS cv_bridge image_transport nodelet roscpp sensor_msgs
+  CATKIN_DEPENDS cv_bridge nodelet roscpp sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -134,7 +131,7 @@ include_directories(
 add_library(
   mjpeg_client
   src/mjpeg_client.cpp
-  )
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -157,7 +154,7 @@ target_link_libraries(
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   ${OpenCV_LIBRARIES}
-  )
+)
 # target_link_libraries(
 #   mjpeg_client_node
 #   ${catkin_LIBRARIES}
