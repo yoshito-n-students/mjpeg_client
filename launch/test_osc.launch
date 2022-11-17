@@ -6,8 +6,8 @@
       <node name="mjepg_client_loader" pkg="nodelet" type="nodelet" 
             args="load mjpeg_client/MjpegClient mjpeg_client" output="screen">
             <rosparam>
-                server: 192.168.1.1
-                service: 80
+                server: "192.168.1.1"
+                service: "80"
                 target: /osc/commands/execute
                 headers: 
                     Content-Type: application/json
