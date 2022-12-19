@@ -8,6 +8,7 @@
             <rosparam>
                 server: "192.168.1.1"
                 service: "80"
+                method: "POST"
                 target: /osc/commands/execute
                 headers: 
                     Content-Type: application/json

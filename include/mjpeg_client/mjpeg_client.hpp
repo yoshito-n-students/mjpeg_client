@@ -45,6 +45,7 @@ private:
 
     // load parameters
     server_ = pnh.param<std::string>("server", "localhost");
+    method_ = pnh.param<std::string>("method", "POST");
     service_ = pnh.param<std::string>("service", "http");
     const std::string target = pnh.param<std::string>("target", "/");
     const std::map<std::string, std::string> headers =
@@ -57,7 +58,7 @@ private:
     // compose http request
     {
       std::ostringstream oss;
-      oss << "POST " << target << " HTTP/1.1\r\n";
+      oss << method_ << " " << target << " HTTP/1.1\r\n";
       oss << "Host: " << server_ << "\r\n";
       for (const auto h : headers) {
         oss << h.first << ": " << h.second << "\r\n";
@@ -112,7 +113,7 @@ private:
     }
 
     // start the next procedure on success
-    NODELET_INFO_STREAM("Resolved {" << server_ << ", " << service_ << "}");
+    NODELET_INFO_STREAM("Resolved {" << server_ << ", " << method_ << ", " << service_ << "}");
     startConnect(endpoints);
   }
 
@@ -260,7 +261,7 @@ private:
 
 private:
   // parameters
-  std::string server_, service_, request_;
+  std::string server_, method_, service_, request_;
   ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
 
