@@ -5,12 +5,16 @@
 #include <sstream>
 #include <string>
 
+#include <camera_info_manager/camera_info_manager.h>
+#include <cv_bridge/cv_bridge.h>
 #include <nodelet/nodelet.h>
+#include <opencv2/highgui/highgui.hpp>
 #include <ros/duration.h>
 #include <ros/node_handle.h>
 #include <ros/publisher.h>
 #include <ros/time.h>
-#include <sensor_msgs/CompressedImage.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/Image.h>
 
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/connect.hpp>
@@ -23,6 +27,7 @@
 #include <boost/asio/write.hpp>
 #include <boost/bind.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
 namespace mjpeg_client {
@@ -45,6 +50,7 @@ private:
 
     // load parameters
     server_ = pnh.param<std::string>("server", "localhost");
+    method_ = pnh.param<std::string>("method", "POST");
     service_ = pnh.param<std::string>("service", "http");
     const std::string target = pnh.param<std::string>("target", "/");
     const std::map<std::string, std::string> headers =
@@ -53,11 +59,13 @@ private:
     const std::string body = pnh.param<std::string>("body", "");
     timeout_ = ros::Duration(pnh.param("timeout", 3.)).toBoost();
     frame_id_ = pnh.param<std::string>("frame_id", "camera");
+    camera_info_url_ = pnh.param<std::string>("camera_info_url", "");
+    publish_camera_info = camera_info_url_ != "";
 
     // compose http request
     {
       std::ostringstream oss;
-      oss << "POST " << target << " HTTP/1.1\r\n";
+      oss << method_ << " " << target << " HTTP/1.1\r\n";
       oss << "Host: " << server_ << "\r\n";
       for (const auto h : headers) {
         oss << h.first << ": " << h.second << "\r\n";
@@ -68,7 +76,9 @@ private:
     }
 
     // init image publisher
-    publisher_ = nh.advertise<sensor_msgs::CompressedImage>("image/compressed", 1, true);
+    raw_publisher_ = nh.advertise<sensor_msgs::Image>("image_raw", 1);
+    camera_info_publisher_ = nh.advertise<sensor_msgs::CameraInfo>("camera_info", 1);
+    if (publish_camera_info) cinfo_ = new camera_info_manager::CameraInfoManager(nh, frame_id_, camera_info_url_);
 
     // start the operation
     start();
@@ -112,7 +122,7 @@ private:
     }
 
     // start the next procedure on success
-    NODELET_INFO_STREAM("Resolved {" << server_ << ", " << service_ << "}");
+    NODELET_INFO_STREAM("Resolved {" << server_ << ", " << method_ << ", " << service_ << "}");
     startConnect(endpoints);
   }
 
@@ -193,19 +203,27 @@ private:
       restart();
       return;
     }
-
-    // pack a jpeg image message
-    const sensor_msgs::CompressedImagePtr msg(new sensor_msgs::CompressedImage());
-    msg->header.stamp = ros::Time::now();
-    msg->header.frame_id = frame_id_;
-    msg->format = "jpeg";
+    
     const char *const jpeg_begin = static_cast<const char *>(response_.data().data());
     const std::size_t jpeg_size = 2 + bytes;
-    msg->data.assign(jpeg_begin, jpeg_begin + jpeg_size);
+    std::vector<uchar> data;
+    data.assign(jpeg_begin, jpeg_begin + jpeg_size);
 
-    // publish the jpeg image
-    publisher_.publish(msg);
+    // decode an image and publish
+    cv_bridge::CvImage image;
+    image.header.stamp = ros::Time::now();
+    image.header.frame_id = frame_id_;
+    image.encoding = "bgr8";
+    image.image = cv::imdecode(data, cv::IMREAD_UNCHANGED);
+    raw_publisher_.publish(image.toImageMsg());
 
+    if (publish_camera_info) {
+      sensor_msgs::CameraInfo ci;
+      ci = cinfo_->getCameraInfo();
+      ci.header.stamp = image.header.stamp;
+      ci.header.frame_id = image.header.frame_id;
+      camera_info_publisher_.publish(ci);
+    }
     response_.consume(jpeg_size);
 
     startReceiveBoundary();
@@ -260,7 +278,8 @@ private:
 
 private:
   // parameters
-  std::string server_, service_, request_;
+  std::string server_, method_, service_, request_, camera_info_url_;
+  bool publish_camera_info;
   ba::deadline_timer::duration_type timeout_;
   std::string frame_id_;
 
@@ -270,7 +289,9 @@ private:
   ba::ip::tcp::socket socket_;
   ba::streambuf response_;
   ba::deadline_timer timer_;
-  ros::Publisher publisher_;
+  ros::Publisher raw_publisher_;
+  ros::Publisher camera_info_publisher_;
+  camera_info_manager::CameraInfoManager *cinfo_;
 };
 } // namespace mjpeg_client
 

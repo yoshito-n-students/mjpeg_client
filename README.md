@@ -11,6 +11,9 @@ ___image/compressed___ (sensor_msgs/CompressedImage)
 ___~server___ (string, default: "localhost")
 * a descriptive name or a numeric address string of the mjpeg server
 
+___~method___ (string, default: "POST")
+* a string corresponding to HTTP request method
+
 ___~service___ (string, default: "http")
 * a descriptive name (usually "http") or a numeric string corresponding to a port number of the mjpeg server
 
@@ -30,14 +33,6 @@ ___~timeout___ (double, default: 3.0)
 ___~frame_id___ (string, default: "camera")
 * frame id of published images
 
-## Nodelet: MjpegDecoder
-decompresses sensor_msgs/CompressedImage to sensor_msgs/Image
-
-### Subscribed Topics
-___image/compressed___ (sensor_msgs/CompressedImage)
-
-### Published Topics
-___image___ (sensor_msgs/Image)
 
 ## Examples
 see **[launch/test_axis.launch](launch/test_axis.launch)** for general IP cameras such as AXIS, and **[launch/test_osc.launch](launch/test_osc.launch)** for cameras which support Open Spherical Camera API such as RICOH THETA
