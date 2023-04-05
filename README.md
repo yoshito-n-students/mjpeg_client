@@ -33,14 +33,6 @@ ___~timeout___ (double, default: 3.0)
 ___~frame_id___ (string, default: "camera")
 * frame id of published images
 
-## Nodelet: MjpegDecoder
-decompresses sensor_msgs/CompressedImage to sensor_msgs/Image
-
-### Subscribed Topics
-___image/compressed___ (sensor_msgs/CompressedImage)
-
-### Published Topics
-___image___ (sensor_msgs/Image)
 
 ## Examples
 see **[launch/test_axis.launch](launch/test_axis.launch)** for general IP cameras such as AXIS, and **[launch/test_osc.launch](launch/test_osc.launch)** for cameras which support Open Spherical Camera API such as RICOH THETA

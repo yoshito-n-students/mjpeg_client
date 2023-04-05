@@ -2,7 +2,4 @@
     <class name="mjpeg_client/MjpegClient" type="mjpeg_client::MjpegClient" base_class_type="nodelet::Nodelet">
         <description>transports a mjpeg stream from http to ros</description>
     </class>
-    <class name="mjpeg_client/MjpegDecoder" type="mjpeg_client::MjpegDecoder" base_class_type="nodelet::Nodelet">
-        <description>subscribes jpeg images and publishes uncompressed images</description>
-    </class>
 </library>

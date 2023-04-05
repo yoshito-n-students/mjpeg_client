@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   nodelet
   roscpp
   sensor_msgs
+  camera_info_manager
 )
 
 ## System dependencies are found with CMake's conventions
@@ -111,7 +112,7 @@ find_package(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES mjpeg_client
-  CATKIN_DEPENDS cv_bridge nodelet roscpp sensor_msgs
+  CATKIN_DEPENDS cv_bridge nodelet roscpp sensor_msgs camera_info_manager
 #  DEPENDS system_lib
 )
 
